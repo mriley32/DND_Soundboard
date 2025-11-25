@@ -1,5 +1,7 @@
 using System;
+using System.Drawing;
 using System.Media;
+using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 namespace MedievalSoundboard
@@ -12,7 +14,35 @@ namespace MedievalSoundboard
             this.Width = 400;
             this.Height = 300;
 
-            var swordButton = new Button { Text = "Sword Slash", Left = 30, Top = 30, Width = 150 };
+            // Try to set the window icon from a PNG (images/logo.png)
+            try
+            {
+                TrySetIcon("images/logo.png");
+            }
+            catch { /* ignore icon errors */ }
+
+            // Set background image (simple relative path)
+            try
+            {
+                this.BackgroundImage = Image.FromFile("images/cobblewall.png");
+                this.BackgroundImageLayout = ImageLayout.Stretch;
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not load background image: {ex.Message}");
+            }
+
+            var swordButton = new Button
+            {
+                Text = "Sword Slash",
+                Left = 30,
+                Top = 30,
+                Width = 150,
+                Height = 80,
+                BackColor = Color.DarkGoldenrod,
+                ForeColor = Color.Black,
+                Font = new Font("Arial", 10, FontStyle.Bold)
+            };
             //var horseButton = new Button { Text = "Horse Gallop", Left = 30, Top = 80, Width = 150 };
             //var arrowButton = new Button { Text = "Arrow Whizz", Left = 30, Top = 130, Width = 150 };
             //var crowdButton = new Button { Text = "Medieval Crowd", Left = 200, Top = 30, Width = 150 };
@@ -43,6 +73,38 @@ namespace MedievalSoundboard
             catch (Exception ex)
             {
                 MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}");
+            }
+        }
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto)]
+        private static extern bool DestroyIcon(IntPtr handle);
+
+        private void TrySetIcon(string pngPath)
+        {
+            try
+            {
+                if (!System.IO.File.Exists(pngPath))
+                    return;
+
+                using (var bmp = new Bitmap(pngPath))
+                {
+                    IntPtr hIcon = bmp.GetHicon();
+                    try
+                    {
+                        using (var tmp = Icon.FromHandle(hIcon))
+                        {
+                            this.Icon = (Icon)tmp.Clone();
+                        }
+                    }
+                    finally
+                    {
+                        DestroyIcon(hIcon);
+                    }
+                }
+            }
+            catch
+            {
+                // ignore errors setting icon
             }
         }
     }
