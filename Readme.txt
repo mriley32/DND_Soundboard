@@ -4,6 +4,6 @@ https://dotnet.microsoft.com/en-us/download/dotnet
 
 At the top level run:
 
-#   dotnet -build -c Release
+#   dotnet build -c Release
 
 The click the .exe in the bin/Release folder to run
