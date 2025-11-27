@@ -2,7 +2,10 @@ using System;
 using System.Drawing;
 using System.Media;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using NAudio.Wave;
+using NAudio.MediaFoundation;
 
 namespace MedievalSoundboard
 {
@@ -63,20 +66,35 @@ namespace MedievalSoundboard
                 return btn;
             }
 
+            Button MakeAnimalButton(string text, string soundFile)
+            {
+                var btn = new Button
+                {
+                    Text = text,
+                    Dock = DockStyle.Fill,
+                    Margin = new Padding(8),
+                    BackColor = Color.SaddleBrown,
+                    ForeColor = Color.White,
+                    Font = new Font("Arial", 10, FontStyle.Bold)
+                };
+                btn.Click += (s, e) => PlaySound(soundFile);
+                return btn;
+            }
+
             // Row 0
-            var swordButton = MakeButton("Sword Slash", "sounds/sword.wav");
-            var barryShortButton = MakeButton("Barry Short Screech", "sounds/monkey_scream_short.wav");
-            var barryLongButton = MakeButton("Barry Long Screech", "sounds/monkey_scream_long.wav");
+            var swordButton = MakeButton("Sword Slash", "sounds/presets/sword.wav");
+            var barryShortButton = MakeButton("Barry Short Screech", "sounds/presets/monkey_scream_short.wav");
+            var barryLongButton = MakeButton("Barry Long Screech", "sounds/presets/monkey_scream_long.wav");
 
             // Row 1
-            var wolfGrowlButton = MakeButton("Wolf Growl", "sounds/wolf_growl.wav");
-            var trumpetButton = MakeButton("Trumpet", "sounds/fail_trumpet.wav");
-            var arrowButton = MakeButton("Arrow", "sounds/arrow_whizz.wav");
+            var wolfGrowlButton = MakeButton("Wolf Growl", "sounds/presets/wolf_growl.wav");
+            var trumpetButton = MakeButton("Trumpet", "sounds/presets/fail_trumpet.wav");
+            var arrowButton = MakeButton("Arrow", "sounds/presets/arrow_whizz.wav");
 
             // Row 2
-            var dragonRoarButton = MakeButton("Dragon Roar", "sounds/dragon_roar.wav");
-            var dragonBreatheFireButton = MakeButton("Dragon Breathe Fire", "sounds/dragon_breathing_fire.wav");
-            var dragonStompButton = MakeButton("Dragon Stomp", "sounds/dragon_stomp.wav");
+            var dragonRoarButton = MakeButton("Dragon Roar", "sounds/presets/dragon_roar.wav");
+            var dragonBreatheFireButton = MakeButton("Dragon Breathe Fire", "sounds/presets/dragon_breathing_fire.wav");
+            var dragonStompButton = MakeButton("Dragon Stomp", "sounds/presets/dragon_stomp.wav");
 
             tlp.Controls.Add(swordButton, 0, 0);
             tlp.Controls.Add(barryShortButton, 1, 0);
@@ -93,13 +111,15 @@ namespace MedievalSoundboard
             // Create a top MenuStrip (like VSCode's top menu) and a content panel
             var menu = new MenuStrip { Dock = DockStyle.Top };
             var presetsMenu = new ToolStripMenuItem("Presets");
+            var animalsMenu = new ToolStripMenuItem("Animals");
             var customMenu = new ToolStripMenuItem("Custom");
-            menu.Items.AddRange(new ToolStripItem[] { presetsMenu, customMenu });
+            menu.Items.AddRange(new ToolStripItem[] { presetsMenu, animalsMenu, customMenu });
 
             // Content panel that will host either the presets layout or the custom page
             var contentPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
 
-            // Create an empty custom panel (will reuse the same background if available)
+            // Create panels for Animals and Custom (will reuse the same background if available)
+            var animalsPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
             var customPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
 
             if (this.BackgroundImage != null)
@@ -110,6 +130,123 @@ namespace MedievalSoundboard
                 customPanel.BackgroundImageLayout = ImageLayout.Stretch;
             }
 
+            // Load cartoon grass background for Animals tab
+            try
+            {
+                animalsPanel.BackgroundImage = Image.FromFile("images/farm_grass.png");
+                animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
+            }
+            catch
+            {
+                // If cartoon_grass.png is not found, use the default background
+                if (this.BackgroundImage != null)
+                {
+                    animalsPanel.BackgroundImage = this.BackgroundImage;
+                    animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
+                }
+            }
+
+            // Build a 3x3 grid for the Custom page
+            var customTlp = new TableLayoutPanel
+            {
+                ColumnCount = 3,
+                RowCount = 3,
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Padding = new Padding(8)
+            };
+            customTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            customTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            customTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            customTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 33F));
+            customTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 33F));
+            customTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 34F));
+
+            // Build a 3x3 grid for the Animals page
+            var animalsTlp = new TableLayoutPanel
+            {
+                ColumnCount = 3,
+                RowCount = 3,
+                Dock = DockStyle.Fill,
+                BackColor = Color.Transparent,
+                Padding = new Padding(8)
+            };
+            animalsTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            animalsTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33F));
+            animalsTlp.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 34F));
+            animalsTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 33F));
+            animalsTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 33F));
+            animalsTlp.RowStyles.Add(new RowStyle(SizeType.Percent, 34F));
+
+            // Animals grid buttons in order: Dog, Meow, Rooster, Lion, Moo, Crickets, Wolf Howl, Horse Gallop, Horse Neigh
+            var dogButton = MakeAnimalButton("Dog", "sounds/animals/dog_bark.wav");
+            var meowButton = MakeAnimalButton("Meow", "sounds/animals/meow.wav");
+            var roosterButton = MakeAnimalButton("Rooster", "sounds/animals/rooster.wav");
+            var lionButton = MakeAnimalButton("Lion", "sounds/animals/lion_roar.wav");
+            var mooButton = MakeAnimalButton("Moo", "sounds/animals/moo.wav");
+            var cricketButton = MakeAnimalButton("Crickets", "sounds/animals/crickets.wav");
+            var wolfHowlButton = MakeAnimalButton("Wolf Howl", "sounds/animals/wolf_howl.wav");
+            var horseGallopButton = MakeAnimalButton("Horse Gallop", "sounds/animals/horse_gallop.wav");
+            var horseNeighButton = MakeAnimalButton("Horse Neigh", "sounds/animals/horse_neigh.wav");
+
+            animalsTlp.Controls.Add(dogButton, 0, 0);
+            animalsTlp.Controls.Add(meowButton, 1, 0);
+            animalsTlp.Controls.Add(roosterButton, 2, 0);
+
+            animalsTlp.Controls.Add(lionButton, 0, 1);
+            animalsTlp.Controls.Add(mooButton, 1, 1);
+            animalsTlp.Controls.Add(cricketButton, 2, 1);
+
+            animalsTlp.Controls.Add(wolfHowlButton, 0, 2);
+            animalsTlp.Controls.Add(horseGallopButton, 1, 2);
+            animalsTlp.Controls.Add(horseNeighButton, 2, 2);
+
+            animalsPanel.Controls.Add(animalsTlp);
+
+            // Create 9 placeholder buttons for custom sounds
+            for (int r = 0; r < 3; r++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    var btn = new Button
+                    {
+                        Text = "Click to add sound",
+                        Dock = DockStyle.Fill,
+                        Margin = new Padding(8),
+                        BackColor = Color.DarkGoldenrod,
+                        ForeColor = Color.Black,
+                        Font = new Font("Arial", 9, FontStyle.Regular),
+                        Tag = null // will store the file path when set
+                    };
+
+                    btn.Click += (s, e) =>
+                    {
+                        var b = s as Button;
+                        if (b == null)
+                            return;
+
+                        string assignedPath = b.Tag as string ?? string.Empty;
+                        if (!string.IsNullOrEmpty(assignedPath))
+                        {
+                            // Play the assigned sound
+                            PlaySound(assignedPath);
+                            return;
+                        }
+
+                        // Prompt user for name and WAV file
+                        if (PromptForSound(out string soundName, out string soundPath))
+                        {
+                            b.Text = soundName;
+                            b.Tag = soundPath;
+                        }
+                    };
+
+                    customTlp.Controls.Add(btn, c, r);
+                }
+            }
+
+            customPanel.Controls.Add(customTlp);
+
             // Put the presets layout into the content panel by default
             contentPanel.Controls.Add(tlp);
 
@@ -118,6 +255,11 @@ namespace MedievalSoundboard
             {
                 contentPanel.Controls.Clear();
                 contentPanel.Controls.Add(tlp);
+            };
+            animalsMenu.Click += (s, e) =>
+            {
+                contentPanel.Controls.Clear();
+                contentPanel.Controls.Add(animalsPanel);
             };
             customMenu.Click += (s, e) =>
             {
@@ -129,19 +271,101 @@ namespace MedievalSoundboard
             Controls.Add(menu);
         }
 
-        private void PlaySound(string filePath)
+        private async void PlaySound(string filePath)
         {
-            try
+            await Task.Run(() =>
             {
-                using (var player = new SoundPlayer(filePath))
+                try
                 {
-                    player.Play();
+                    // Use NAudio for all audio formats (MP3, WAV, ADPCM, etc.)
+                    using (var reader = new MediaFoundationReader(filePath))
+                    using (var output = new WaveOutEvent())
+                    {
+                        output.Init(reader);
+                        output.Play();
+                        // Wait for playback to complete
+                        while (output.PlaybackState == PlaybackState.Playing)
+                        {
+                            System.Threading.Thread.Sleep(100);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}");
+                }
+            });
+        }
+
+        // Shows a small dialog to ask the user for a display name and a .wav file path.
+        // Returns true and fills out parameters if the user confirmed, otherwise false.
+        private bool PromptForSound(out string soundName, out string soundPath)
+        {
+            soundName = string.Empty;
+            soundPath = string.Empty;
+
+            using (var dlg = new Form())
+            {
+                dlg.Text = "Add Sound";
+                dlg.FormBorderStyle = FormBorderStyle.FixedDialog;
+                dlg.StartPosition = FormStartPosition.CenterParent;
+                dlg.MinimizeBox = false;
+                dlg.MaximizeBox = false;
+                dlg.ClientSize = new Size(480, 160);
+
+                var lblName = new Label { Text = "Name:", Left = 12, Top = 16, Width = 50 };
+                var txtName = new TextBox { Left = 70, Top = 12, Width = 390 };
+
+                var lblFile = new Label { Text = "File:", Left = 12, Top = 52, Width = 50 };
+                var txtFile = new TextBox { Left = 70, Top = 48, Width = 310, ReadOnly = true };
+                var btnBrowse = new Button { Text = "Browse...", Left = 390, Top = 46, Width = 70 };
+
+                var btnOk = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 300, Width = 80, Top = 100 };
+                var btnCancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 390, Width = 80, Top = 100 };
+
+                btnBrowse.Click += (s, e) =>
+                {
+                    using (var ofd = new OpenFileDialog())
+                    {
+                        ofd.Filter = "Audio files|*.wav;*.mp3|WAV files|*.wav|MP3 files|*.mp3|All files|*.*";
+                        ofd.Title = "Select an audio file";
+                        if (ofd.ShowDialog(dlg) == DialogResult.OK)
+                        {
+                            txtFile.Text = ofd.FileName;
+                        }
+                    }
+                };
+
+                btnOk.Click += (s, e) =>
+                {
+                    if (string.IsNullOrWhiteSpace(txtName.Text))
+                    {
+                        MessageBox.Show(dlg, "Please enter a name for the sound.", "Missing name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        dlg.DialogResult = DialogResult.None;
+                        return;
+                    }
+                    if (string.IsNullOrWhiteSpace(txtFile.Text) || !System.IO.File.Exists(txtFile.Text))
+                    {
+                        MessageBox.Show(dlg, "Please choose an existing .wav file.", "Missing file", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        dlg.DialogResult = DialogResult.None;
+                        return;
+                    }
+                };
+
+                dlg.Controls.AddRange(new Control[] { lblName, txtName, lblFile, txtFile, btnBrowse, btnOk, btnCancel });
+                dlg.AcceptButton = btnOk;
+                dlg.CancelButton = btnCancel;
+
+                var result = dlg.ShowDialog(this);
+                if (result == DialogResult.OK)
+                {
+                    soundName = txtName.Text.Trim();
+                    soundPath = txtFile.Text.Trim();
+                    return true;
                 }
             }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}");
-            }
+
+            return false;
         }
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
