@@ -4,6 +4,8 @@ using System.Media;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.IO;
+using System.Text.Json;
 using NAudio.Wave;
 using NAudio.MediaFoundation;
 
@@ -11,6 +13,16 @@ namespace MedievalSoundboard
 {
     public class MainForm : Form
     {
+        // Store references to the 9 custom buttons so we can persist their state
+        private readonly System.Collections.Generic.List<Button> customButtons = new System.Collections.Generic.List<Button>();
+
+        // Simple DTO for saving/loading custom slot data
+        private class CustomSlot
+        {
+            public string? Name { get; set; }
+            public string? FilePath { get; set; }
+        }
+
         public MainForm()
         {
             this.Text = "Medieval Soundboard";
@@ -238,14 +250,21 @@ namespace MedievalSoundboard
                         {
                             b.Text = soundName;
                             b.Tag = soundPath;
+                            // Persist immediately when the user assigns a new custom sound
+                            SaveCustomConfig();
                         }
                     };
 
                     customTlp.Controls.Add(btn, c, r);
+                    // track button for persistence (order is row-major)
+                    customButtons.Add(btn);
                 }
             }
 
             customPanel.Controls.Add(customTlp);
+
+            // Load saved custom assignments (if any)
+            LoadCustomConfig();
 
             // Put the presets layout into the content panel by default
             contentPanel.Controls.Add(tlp);
@@ -269,6 +288,9 @@ namespace MedievalSoundboard
 
             Controls.Add(contentPanel);
             Controls.Add(menu);
+
+            // Ensure custom assignments are saved when the form closes
+            this.FormClosing += (s, e) => SaveCustomConfig();
         }
 
         private async void PlaySound(string filePath)
@@ -292,7 +314,8 @@ namespace MedievalSoundboard
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}");
+                    // Can't show message box directly from background thread; marshal to UI thread
+                    this.Invoke((Action)(() => MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}")));
                 }
             });
         }
@@ -366,6 +389,59 @@ namespace MedievalSoundboard
             }
 
             return false;
+        }
+
+        // Persistence: save custom button assignments to AppData
+        private string GetConfigPath()
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "DND_Soundboard");
+            if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+            return Path.Combine(dir, "custom.json");
+        }
+
+        private void SaveCustomConfig()
+        {
+            try
+            {
+                var slots = new System.Collections.Generic.List<CustomSlot>();
+                foreach (var b in customButtons)
+                {
+                    var fp = b.Tag as string;
+                    slots.Add(new CustomSlot { Name = string.IsNullOrWhiteSpace(fp) ? null : b.Text, FilePath = fp });
+                }
+                var json = JsonSerializer.Serialize(slots, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(GetConfigPath(), json);
+            }
+            catch
+            {
+                // ignore save errors
+            }
+        }
+
+        private void LoadCustomConfig()
+        {
+            try
+            {
+                var path = GetConfigPath();
+                if (!File.Exists(path)) return;
+                var json = File.ReadAllText(path);
+                var slots = JsonSerializer.Deserialize<System.Collections.Generic.List<CustomSlot>>(json);
+                if (slots == null) return;
+                for (int i = 0; i < Math.Min(slots.Count, customButtons.Count); i++)
+                {
+                    var s = slots[i];
+                    if (s != null && !string.IsNullOrWhiteSpace(s.FilePath) && File.Exists(s.FilePath))
+                    {
+                        var b = customButtons[i];
+                        b.Text = string.IsNullOrWhiteSpace(s.Name) ? Path.GetFileNameWithoutExtension(s.FilePath) : s.Name;
+                        b.Tag = s.FilePath;
+                    }
+                }
+            }
+            catch
+            {
+                // ignore load errors
+            }
         }
 
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
