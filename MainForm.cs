@@ -231,6 +231,19 @@ namespace MedievalSoundboard
                         Tag = null // will store the file path when set
                     };
 
+                    // Add a context menu so right-click can clear the assigned sound
+                    var cms = new ContextMenuStrip();
+                    var clearItem = new ToolStripMenuItem("Clear");
+                    clearItem.Click += (sender, ev) =>
+                    {
+                        btn.Text = "Click to add sound";
+                        btn.Tag = null;
+                        SaveCustomConfig();
+                    };
+                    cms.Items.Add(clearItem);
+                    cms.Opening += (sender, ev) => { clearItem.Enabled = !string.IsNullOrEmpty(btn.Tag as string); };
+                    btn.ContextMenuStrip = cms;
+
                     btn.Click += (s, e) =>
                     {
                         var b = s as Button;
