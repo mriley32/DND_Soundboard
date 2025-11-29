@@ -36,11 +36,17 @@ namespace MedievalSoundboard
             }
             catch { /* ignore icon errors */ }
 
-            // Set background image (simple relative path)
+            // Preload background images so switching pages doesn't re-open files and cause flicker
+            Image? bgImage = null;
+            Image? animalsImage = null;
             try
             {
-                this.BackgroundImage = Image.FromFile("images/cobblewall.png");
-                this.BackgroundImageLayout = ImageLayout.Stretch;
+                if (File.Exists("images/cobblewall.png"))
+                {
+                    bgImage = Image.FromFile("images/cobblewall.png");
+                    this.BackgroundImage = bgImage;
+                    this.BackgroundImageLayout = ImageLayout.Stretch;
+                }
             }
             catch (Exception ex)
             {
@@ -134,26 +140,35 @@ namespace MedievalSoundboard
             var animalsPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
             var customPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.Transparent };
 
-            if (this.BackgroundImage != null)
+            // Apply preloaded background to content/custom panels
+            if (bgImage != null)
             {
-                contentPanel.BackgroundImage = this.BackgroundImage;
+                contentPanel.BackgroundImage = bgImage;
                 contentPanel.BackgroundImageLayout = ImageLayout.Stretch;
-                customPanel.BackgroundImage = this.BackgroundImage;
+                customPanel.BackgroundImage = bgImage;
                 customPanel.BackgroundImageLayout = ImageLayout.Stretch;
             }
 
-            // Load cartoon grass background for Animals tab
+            // Preload animals background (cartoon grass) and fall back to main bgImage
             try
             {
-                animalsPanel.BackgroundImage = Image.FromFile("images/farm_grass.png");
-                animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
+                if (File.Exists("images/farm_grass.png"))
+                {
+                    animalsImage = Image.FromFile("images/farm_grass.png");
+                    animalsPanel.BackgroundImage = animalsImage;
+                    animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
+                }
+                else if (bgImage != null)
+                {
+                    animalsPanel.BackgroundImage = bgImage;
+                    animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
+                }
             }
             catch
             {
-                // If cartoon_grass.png is not found, use the default background
-                if (this.BackgroundImage != null)
+                if (bgImage != null)
                 {
-                    animalsPanel.BackgroundImage = this.BackgroundImage;
+                    animalsPanel.BackgroundImage = bgImage;
                     animalsPanel.BackgroundImageLayout = ImageLayout.Stretch;
                 }
             }
@@ -214,6 +229,26 @@ namespace MedievalSoundboard
             animalsTlp.Controls.Add(horseNeighButton, 2, 2);
 
             animalsPanel.Controls.Add(animalsTlp);
+
+            // Add the three major pages to the content panel once, and show/hide them
+            contentPanel.Controls.Add(tlp);
+            contentPanel.Controls.Add(animalsPanel);
+            contentPanel.Controls.Add(customPanel);
+
+            // Enable double-buffering on panels to reduce flicker
+            void EnableDoubleBuffer(Control ctrl)
+            {
+                try
+                {
+                    var prop = typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    prop?.SetValue(ctrl, true, null);
+                }
+                catch { }
+            }
+            EnableDoubleBuffer(contentPanel);
+            EnableDoubleBuffer(tlp);
+            EnableDoubleBuffer(animalsPanel);
+            EnableDoubleBuffer(customPanel);
 
             // Create 9 placeholder buttons for custom sounds
             for (int r = 0; r < 3; r++)
@@ -279,24 +314,41 @@ namespace MedievalSoundboard
             // Load saved custom assignments (if any)
             LoadCustomConfig();
 
-            // Put the presets layout into the content panel by default
-            contentPanel.Controls.Add(tlp);
+            // Show presets by default; hide others
+            tlp.Visible = true;
+            animalsPanel.Visible = false;
+            customPanel.Visible = false;
 
-            // Menu actions switch the visible page
+            // Also enable double-buffering for the inner TableLayoutPanels to reduce redraw flicker
+            EnableDoubleBuffer(animalsTlp);
+            EnableDoubleBuffer(customTlp);
+
+            // Force creation of control handles for the content subtree so switching pages doesn't incur first-time handle creation delays
+            void EnsureHandles(Control ctrl)
+            {
+                try { ctrl.CreateControl(); } catch { }
+                foreach (Control ch in ctrl.Controls)
+                {
+                    EnsureHandles(ch);
+                }
+            }
+            EnsureHandles(contentPanel);
+
+            // Menu actions switch the visible page without recreating controls
             presetsMenu.Click += (s, e) =>
             {
-                contentPanel.Controls.Clear();
-                contentPanel.Controls.Add(tlp);
+                tlp.Visible = true; animalsPanel.Visible = false; customPanel.Visible = false;
+                tlp.BringToFront();
             };
             animalsMenu.Click += (s, e) =>
             {
-                contentPanel.Controls.Clear();
-                contentPanel.Controls.Add(animalsPanel);
+                tlp.Visible = false; animalsPanel.Visible = true; customPanel.Visible = false;
+                animalsPanel.BringToFront();
             };
             customMenu.Click += (s, e) =>
             {
-                contentPanel.Controls.Clear();
-                contentPanel.Controls.Add(customPanel);
+                tlp.Visible = false; animalsPanel.Visible = false; customPanel.Visible = true;
+                customPanel.BringToFront();
             };
 
             Controls.Add(contentPanel);
