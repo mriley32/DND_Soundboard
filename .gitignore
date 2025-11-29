@@ -1,4 +1,6 @@
 bin/
 obj/
 .vs/
+.vscode/
+.github/
 DND_Soundboard.sln

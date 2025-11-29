@@ -266,8 +266,63 @@ namespace MedievalSoundboard
                         Tag = null // will store the file path when set
                     };
 
-                    // Add a context menu so right-click can clear the assigned sound
+                    // Add a context menu so right-click can Replace, Rename or Clear the assigned sound (only for custom buttons)
                     var cms = new ContextMenuStrip();
+                    var replaceItem = new ToolStripMenuItem("Replace/Set...");
+                    replaceItem.Click += (sender, ev) =>
+                    {
+                        using (var ofd = new OpenFileDialog())
+                        {
+                            ofd.Filter = "Audio files|*.wav;*.mp3|WAV files|*.wav|MP3 files|*.mp3|All files|*.*";
+                            ofd.Title = "Select an audio file to assign";
+                            if (ofd.ShowDialog(this) == DialogResult.OK)
+                            {
+                                btn.Tag = ofd.FileName;
+                                btn.Text = Path.GetFileNameWithoutExtension(ofd.FileName);
+                                SaveCustomConfig();
+                            }
+                        }
+                    };
+
+                    var renameItem = new ToolStripMenuItem("Rename...");
+                    renameItem.Click += (sender, ev) =>
+                    {
+                        // Show a small dialog to rename the display name without changing the assigned file
+                        var current = btn.Text ?? string.Empty;
+                        using (var input = new Form())
+                        {
+                            input.Text = "Rename Sound";
+                            input.FormBorderStyle = FormBorderStyle.FixedDialog;
+                            input.StartPosition = FormStartPosition.CenterParent;
+                            input.MinimizeBox = false;
+                            input.MaximizeBox = false;
+                            input.ClientSize = new Size(360, 100);
+
+                            var lbl = new Label { Text = "Name:", Left = 8, Top = 12, Width = 50 };
+                            var txt = new TextBox { Left = 70, Top = 8, Width = 270, Text = current };
+                            var ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Left = 190, Top = 40, Width = 70 };
+                            var cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Left = 270, Top = 40, Width = 70 };
+
+                            input.Controls.AddRange(new Control[] { lbl, txt, ok, cancel });
+                            input.AcceptButton = ok;
+                            input.CancelButton = cancel;
+
+                            if (input.ShowDialog(this) == DialogResult.OK)
+                            {
+                                var newName = txt.Text.Trim();
+                                if (!string.IsNullOrWhiteSpace(newName))
+                                {
+                                    btn.Text = newName;
+                                    SaveCustomConfig();
+                                }
+                                else
+                                {
+                                    MessageBox.Show(this, "Name cannot be empty.", "Invalid name", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                                }
+                            }
+                        }
+                    };
+
                     var clearItem = new ToolStripMenuItem("Clear");
                     clearItem.Click += (sender, ev) =>
                     {
@@ -275,8 +330,42 @@ namespace MedievalSoundboard
                         btn.Tag = null;
                         SaveCustomConfig();
                     };
-                    cms.Items.Add(clearItem);
-                    cms.Opening += (sender, ev) => { clearItem.Enabled = !string.IsNullOrEmpty(btn.Tag as string); };
+
+                    var clearAllItem = new ToolStripMenuItem("Clear All Buttons");
+                    clearAllItem.Click += (sender, ev) =>
+                    {
+                        var resp = MessageBox.Show(this, "Clear all custom buttons? This will remove all assigned sounds.", "Confirm Clear All", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                        if (resp == DialogResult.Yes)
+                        {
+                            foreach (var cbt in customButtons)
+                            {
+                                cbt.Text = "Click to add sound";
+                                cbt.Tag = null;
+                            }
+                            SaveCustomConfig();
+                        }
+                    };
+
+                    cms.Items.AddRange(new ToolStripItem[] { replaceItem, renameItem, clearItem, new ToolStripSeparator(), clearAllItem });
+                    cms.Opening += (sender, ev) =>
+                    {
+                        // Enable Rename and Clear only when there's an assigned file; Replace is always enabled
+                        var hasFile = !string.IsNullOrEmpty(btn.Tag as string);
+                        renameItem.Enabled = hasFile;
+                        clearItem.Enabled = hasFile;
+
+                        // Enable Clear All only when any custom button has an assigned file
+                        bool anyAssigned = false;
+                        foreach (var cbt in customButtons)
+                        {
+                            if (!string.IsNullOrEmpty(cbt.Tag as string))
+                            {
+                                anyAssigned = true;
+                                break;
+                            }
+                        }
+                        clearAllItem.Enabled = anyAssigned;
+                    };
                     btn.ContextMenuStrip = cms;
 
                     btn.Click += (s, e) =>
