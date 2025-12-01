@@ -1,25 +1,23 @@
-# Medieval Soundboard
+# NOTE: You need to have Windows .NET SDK Installed. I am using v 10.0 downloaded here:
 
-A simple Windows Forms C# application that plays medieval sounds (sword slash, horse gallop, arrow whizzing, etc.) when you click the corresponding button.
+# https://dotnet.microsoft.com/en-us/download/dotnet
 
-## How to Use
+# At the top level run:
 
-1. Add your own public domain .wav files to the `sounds` folder:
-   - `sword.wav` (sword slash)
-   - `horse.wav` (horse gallop)
-   - `arrow.wav` (arrow whizz)
-   - `crowd.wav` (medieval crowd)
-   - `trumpet.wav` (trumpet fanfare)
+dotnet build -c Release
 
-2. Build and run the project in Visual Studio or with the .NET CLI.
+# Then double click the .exe in the bin/Release folder to run
+# Or you can run it on the command line:
 
-3. Click a button to play the sound.
+./bin/Release/net10.0-windows/DND_SoundBoard.exe
 
-## Notes
-- The app uses the `System.Media.SoundPlayer` class, which supports `.wav` files.
-- You can find public domain medieval sound effects at sites like [freesound.org](https://freesound.org/) (filter by license) or [OpenGameArt.org](https://opengameart.org/).
-- Replace the placeholder files in the `sounds` folder with your own.
+# Creating a Standalone Executable (for friends)
 
-## Requirements
-- .NET Framework (or .NET Core/5+/6+ with Windows Forms support)
-- Windows OS
+If you want to share this app with friends who might not have .NET installed, run this command:
+
+dotnet publish -r win-x64 -c Release --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
+
+This will create a standalone executable in:
+bin/Release/net10.0-windows/win-x64/publish/
+
+You can zip that 'publish' folder and send it to your friends. They just need to run DND_SoundBoard.exe inside it.
