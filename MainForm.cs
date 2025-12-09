@@ -16,6 +16,10 @@ namespace MedievalSoundboard
         // Store references to the 9 custom buttons so we can persist their state
         private readonly System.Collections.Generic.List<Button> customButtons = new System.Collections.Generic.List<Button>();
 
+        // Track active sounds per button to allow stopping them
+        private readonly System.Collections.Generic.Dictionary<Button, System.Collections.Generic.List<WaveOutEvent>> activeSounds = new System.Collections.Generic.Dictionary<Button, System.Collections.Generic.List<WaveOutEvent>>();
+        private const int StopIconSize = 24;
+
         // Simple DTO for saving/loading custom slot data
         private class CustomSlot
         {
@@ -78,9 +82,11 @@ namespace MedievalSoundboard
                     Margin = new Padding(8),
                     BackColor = Color.DarkGoldenrod,
                     ForeColor = Color.Black,
-                    Font = new Font("Arial", 10, FontStyle.Bold)
+                    Font = new Font("Arial", 10, FontStyle.Bold),
+                    Tag = soundFile
                 };
-                btn.Click += (s, e) => PlaySound(soundFile);
+                btn.Paint += SoundButton_Paint;
+                btn.MouseClick += SoundButton_MouseClick;
                 return btn;
             }
 
@@ -93,9 +99,11 @@ namespace MedievalSoundboard
                     Margin = new Padding(8),
                     BackColor = Color.SaddleBrown,
                     ForeColor = Color.White,
-                    Font = new Font("Arial", 10, FontStyle.Bold)
+                    Font = new Font("Arial", 10, FontStyle.Bold),
+                    Tag = soundFile
                 };
-                btn.Click += (s, e) => PlaySound(soundFile);
+                btn.Paint += SoundButton_Paint;
+                btn.MouseClick += SoundButton_MouseClick;
                 return btn;
             }
 
@@ -368,29 +376,8 @@ namespace MedievalSoundboard
                     };
                     btn.ContextMenuStrip = cms;
 
-                    btn.Click += (s, e) =>
-                    {
-                        var b = s as Button;
-                        if (b == null)
-                            return;
-
-                        string assignedPath = b.Tag as string ?? string.Empty;
-                        if (!string.IsNullOrEmpty(assignedPath))
-                        {
-                            // Play the assigned sound
-                            PlaySound(assignedPath);
-                            return;
-                        }
-
-                        // Prompt user for name and WAV file
-                        if (PromptForSound(out string soundName, out string soundPath))
-                        {
-                            b.Text = soundName;
-                            b.Tag = soundPath;
-                            // Persist immediately when the user assigns a new custom sound
-                            SaveCustomConfig();
-                        }
-                    };
+                    btn.Paint += SoundButton_Paint;
+                    btn.MouseClick += SoundButton_MouseClick;
 
                     customTlp.Controls.Add(btn, c, r);
                     // track button for persistence (order is row-major)
@@ -447,18 +434,35 @@ namespace MedievalSoundboard
             this.FormClosing += (s, e) => SaveCustomConfig();
         }
 
-        private async void PlaySound(string filePath)
+        private async void PlaySound(Button sourceButton, string filePath)
         {
+            // Add to active sounds
+            if (!activeSounds.ContainsKey(sourceButton))
+            {
+                activeSounds[sourceButton] = new System.Collections.Generic.List<WaveOutEvent>();
+            }
+
+            WaveOutEvent? output = null;
+
             await Task.Run(() =>
             {
                 try
                 {
-                    // Use NAudio for all audio formats (MP3, WAV, ADPCM, etc.)
                     using (var reader = new MediaFoundationReader(filePath))
-                    using (var output = new WaveOutEvent())
                     {
+                        output = new WaveOutEvent();
                         output.Init(reader);
+
+                        // Add to list and update UI
+                        this.Invoke((Action)(() =>
+                        {
+                            if (activeSounds.ContainsKey(sourceButton))
+                                activeSounds[sourceButton].Add(output);
+                            sourceButton.Invalidate();
+                        }));
+
                         output.Play();
+
                         // Wait for playback to complete
                         while (output.PlaybackState == PlaybackState.Playing)
                         {
@@ -471,7 +475,91 @@ namespace MedievalSoundboard
                     // Can't show message box directly from background thread; marshal to UI thread
                     this.Invoke((Action)(() => MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}")));
                 }
+                finally
+                {
+                    // Cleanup
+                    if (output != null)
+                    {
+                        this.Invoke((Action)(() =>
+                        {
+                            if (activeSounds.ContainsKey(sourceButton))
+                            {
+                                activeSounds[sourceButton].Remove(output);
+                                if (activeSounds[sourceButton].Count == 0)
+                                {
+                                    activeSounds.Remove(sourceButton);
+                                }
+                                sourceButton.Invalidate();
+                            }
+                        }));
+                        output.Dispose();
+                    }
+                }
             });
+        }
+
+        private void StopSounds(Button btn)
+        {
+            if (activeSounds.ContainsKey(btn))
+            {
+                var list = activeSounds[btn].ToArray(); // Copy to avoid modification during enumeration
+                foreach (var outEvent in list)
+                {
+                    try { outEvent.Stop(); } catch { }
+                }
+            }
+        }
+
+        private void SoundButton_Paint(object? sender, PaintEventArgs e)
+        {
+            var btn = sender as Button;
+            if (btn != null && activeSounds.ContainsKey(btn) && activeSounds[btn].Count > 0)
+            {
+                // Draw red stop square in bottom right
+                var rect = new Rectangle(btn.Width - StopIconSize - 7, btn.Height - StopIconSize - 7, StopIconSize, StopIconSize);
+                e.Graphics.FillRectangle(Brushes.White, rect);
+                e.Graphics.DrawRectangle(Pens.White, rect);
+                
+                // Draw a small white square inside to make it look like a stop button
+                var innerRect = new Rectangle(rect.X + 6, rect.Y + 6, rect.Width - 12, rect.Height - 12);
+                e.Graphics.FillRectangle(Brushes.Red, innerRect);
+            }
+        }
+
+        private void SoundButton_MouseClick(object? sender, MouseEventArgs e)
+        {
+            if (e.Button != MouseButtons.Left) return;
+
+            var btn = sender as Button;
+            if (btn == null) return;
+
+            // Check if stop button clicked
+            if (activeSounds.ContainsKey(btn) && activeSounds[btn].Count > 0)
+            {
+                // Check bounds: bottom right
+                var rect = new Rectangle(btn.Width - StopIconSize - 7, btn.Height - StopIconSize - 7, StopIconSize, StopIconSize);
+                if (rect.Contains(e.Location))
+                {
+                    StopSounds(btn);
+                    return;
+                }
+            }
+
+            string? soundFile = btn.Tag as string;
+            if (!string.IsNullOrEmpty(soundFile))
+            {
+                PlaySound(btn, soundFile);
+            }
+            else
+            {
+                // Logic for assigning custom sound
+                if (PromptForSound(out string soundName, out string soundPath))
+                {
+                    btn.Text = soundName;
+                    btn.Tag = soundPath;
+                    SaveCustomConfig();
+                }
+            }
         }
 
         // Shows a small dialog to ask the user for a display name and a .wav file path.
