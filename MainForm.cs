@@ -18,7 +18,14 @@ namespace MedievalSoundboard
 
         // Track active sounds per button to allow stopping them
         private readonly System.Collections.Generic.Dictionary<Button, System.Collections.Generic.List<WaveOutEvent>> activeSounds = new System.Collections.Generic.Dictionary<Button, System.Collections.Generic.List<WaveOutEvent>>();
+        
+        // Track loop state per button
+        private readonly System.Collections.Generic.Dictionary<Button, bool> loopStates = new System.Collections.Generic.Dictionary<Button, bool>();
+        
         private const int StopIconSize = 24;
+        
+        private bool IsLooping(Button btn) => loopStates.ContainsKey(btn) && loopStates[btn];
+        private void SetLooping(Button btn, bool looping) => loopStates[btn] = looping;
 
         // Simple DTO for saving/loading custom slot data
         private class CustomSlot
@@ -85,6 +92,21 @@ namespace MedievalSoundboard
                     Font = new Font("Arial", 10, FontStyle.Bold),
                     Tag = soundFile
                 };
+                
+                // Add context menu for loop option
+                var cms = new ContextMenuStrip();
+                var loopItem = new ToolStripMenuItem("Loop Sound");
+                loopItem.Click += (s, e) =>
+                {
+                    bool current = IsLooping(btn);
+                    SetLooping(btn, !current);
+                    loopItem.Checked = !current;
+                    btn.Invalidate();
+                };
+                cms.Items.Add(loopItem);
+                cms.Opening += (s, e) => loopItem.Checked = IsLooping(btn);
+                btn.ContextMenuStrip = cms;
+                
                 btn.Paint += SoundButton_Paint;
                 btn.MouseClick += SoundButton_MouseClick;
                 return btn;
@@ -102,6 +124,21 @@ namespace MedievalSoundboard
                     Font = new Font("Arial", 10, FontStyle.Bold),
                     Tag = soundFile
                 };
+                
+                // Add context menu for loop option
+                var cms = new ContextMenuStrip();
+                var loopItem = new ToolStripMenuItem("Loop Sound");
+                loopItem.Click += (s, e) =>
+                {
+                    bool current = IsLooping(btn);
+                    SetLooping(btn, !current);
+                    loopItem.Checked = !current;
+                    btn.Invalidate();
+                };
+                cms.Items.Add(loopItem);
+                cms.Opening += (s, e) => loopItem.Checked = IsLooping(btn);
+                btn.ContextMenuStrip = cms;
+                
                 btn.Paint += SoundButton_Paint;
                 btn.MouseClick += SoundButton_MouseClick;
                 return btn;
@@ -354,13 +391,24 @@ namespace MedievalSoundboard
                         }
                     };
 
-                    cms.Items.AddRange(new ToolStripItem[] { replaceItem, renameItem, clearItem, new ToolStripSeparator(), clearAllItem });
+                    var loopItem = new ToolStripMenuItem("Loop Sound");
+                    loopItem.Click += (sender, ev) =>
+                    {
+                        bool current = IsLooping(btn);
+                        SetLooping(btn, !current);
+                        loopItem.Checked = !current;
+                        btn.Invalidate();
+                    };
+                    
+                    cms.Items.AddRange(new ToolStripItem[] { replaceItem, renameItem, clearItem, new ToolStripSeparator(), loopItem, new ToolStripSeparator(), clearAllItem });
                     cms.Opening += (sender, ev) =>
                     {
                         // Enable Rename and Clear only when there's an assigned file; Replace is always enabled
                         var hasFile = !string.IsNullOrEmpty(btn.Tag as string);
                         renameItem.Enabled = hasFile;
                         clearItem.Enabled = hasFile;
+                        loopItem.Enabled = hasFile;
+                        loopItem.Checked = IsLooping(btn);
 
                         // Enable Clear All only when any custom button has an assigned file
                         bool anyAssigned = false;
@@ -446,53 +494,75 @@ namespace MedievalSoundboard
 
             await Task.Run(() =>
             {
-                try
+                bool continueLooping = true;
+                while (continueLooping)
                 {
-                    using (var reader = new MediaFoundationReader(filePath))
+                    try
                     {
-                        output = new WaveOutEvent();
-                        output.Init(reader);
-
-                        // Add to list and update UI
-                        this.Invoke((Action)(() =>
+                        using (var reader = new MediaFoundationReader(filePath))
                         {
-                            if (activeSounds.ContainsKey(sourceButton))
+                            output = new WaveOutEvent();
+                            output.Init(reader);
+
+                            // Add to list and update UI
+                            this.Invoke((Action)(() =>
+                            {
+                                if (!activeSounds.ContainsKey(sourceButton))
+                                    activeSounds[sourceButton] = new System.Collections.Generic.List<WaveOutEvent>();
                                 activeSounds[sourceButton].Add(output);
-                            sourceButton.Invalidate();
-                        }));
+                                sourceButton.Invalidate();
+                            }));
 
-                        output.Play();
+                            output.Play();
 
-                        // Wait for playback to complete
-                        while (output.PlaybackState == PlaybackState.Playing)
-                        {
-                            System.Threading.Thread.Sleep(100);
+                            // Wait for playback to complete
+                            while (output.PlaybackState == PlaybackState.Playing)
+                            {
+                                System.Threading.Thread.Sleep(100);
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    // Can't show message box directly from background thread; marshal to UI thread
-                    this.Invoke((Action)(() => MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}")));
-                }
-                finally
-                {
-                    // Cleanup
-                    if (output != null)
+                    catch (Exception ex)
                     {
-                        this.Invoke((Action)(() =>
+                        // Can't show message box directly from background thread; marshal to UI thread
+                        this.Invoke((Action)(() => MessageBox.Show($"Could not play sound: {filePath}\n{ex.Message}")));
+                        continueLooping = false;
+                    }
+                    finally
+                    {
+                        // Cleanup
+                        if (output != null)
                         {
-                            if (activeSounds.ContainsKey(sourceButton))
+                            bool shouldLoop = false;
+                            this.Invoke((Action)(() =>
                             {
-                                activeSounds[sourceButton].Remove(output);
-                                if (activeSounds[sourceButton].Count == 0)
+                                if (activeSounds.ContainsKey(sourceButton) && activeSounds[sourceButton].Contains(output))
                                 {
-                                    activeSounds.Remove(sourceButton);
+                                    // Natural finish - remove from list
+                                    activeSounds[sourceButton].Remove(output);
+                                    if (activeSounds[sourceButton].Count == 0)
+                                    {
+                                        activeSounds.Remove(sourceButton);
+                                    }
+                                    sourceButton.Invalidate();
+                                    
+                                    // Check if we should loop
+                                    shouldLoop = IsLooping(sourceButton);
                                 }
-                                sourceButton.Invalidate();
-                            }
-                        }));
-                        output.Dispose();
+                                else
+                                {
+                                    // User stopped it manually
+                                    sourceButton.Invalidate();
+                                }
+                            }));
+                            
+                            output.Dispose();
+                            continueLooping = shouldLoop;
+                        }
+                        else
+                        {
+                            continueLooping = false;
+                        }
                     }
                 }
             });
@@ -502,7 +572,12 @@ namespace MedievalSoundboard
         {
             if (activeSounds.ContainsKey(btn))
             {
-                var list = activeSounds[btn].ToArray(); // Copy to avoid modification during enumeration
+                var list = activeSounds[btn].ToArray();
+                // Clear the list immediately so PlaySound knows it was manually stopped
+                activeSounds[btn].Clear();
+                activeSounds.Remove(btn);
+                btn.Invalidate();
+                
                 foreach (var outEvent in list)
                 {
                     try { outEvent.Stop(); } catch { }
@@ -513,7 +588,20 @@ namespace MedievalSoundboard
         private void SoundButton_Paint(object? sender, PaintEventArgs e)
         {
             var btn = sender as Button;
-            if (btn != null && activeSounds.ContainsKey(btn) && activeSounds[btn].Count > 0)
+            if (btn == null) return;
+            
+            // Draw glowing green border if looping is enabled
+            if (IsLooping(btn))
+            {
+                using (var pen = new Pen(Color.LimeGreen, 3))
+                {
+                    var bounds = btn.ClientRectangle;
+                    bounds.Inflate(-2, -2);
+                    e.Graphics.DrawRectangle(pen, bounds);
+                }
+            }
+            
+            if (activeSounds.ContainsKey(btn) && activeSounds[btn].Count > 0)
             {
                 // Draw red stop square in bottom right
                 var rect = new Rectangle(btn.Width - StopIconSize - 7, btn.Height - StopIconSize - 7, StopIconSize, StopIconSize);
